@@ -14,7 +14,7 @@ class TOTPApp:
     def __init__(self, root):
         self.root = root
         self.root.title("TOTP Generator")
-        self.root.geometry("400x500")
+        self.root.geometry("400x400")
 
         self.file_path = "totp_codes.json"
         self.master_password = None
@@ -34,29 +34,23 @@ class TOTPApp:
         # Load codes from file if they exist
         if self.load_codes():
             self.load_otp_listbox()
+            
+        # Copy to Clipboard Button
+        self.copy_button = tk.Button(root, text="Copy to Clipboard", command=self.copy_to_clipboard)
+        self.copy_button.pack(pady=5)
 
         # Counter Label for OTP refresh countdown
         self.counter_label = tk.Label(root, text=f"Time until code refresh: {self.totp_interval} seconds")
         self.counter_label.pack(pady=5)
 
-        # Application Name Label and Entry
-        tk.Label(root, text="Application Name:").pack(pady=5)
-        self.app_name_entry = tk.Entry(root)
-        self.app_name_entry.pack(pady=5)
-
-        # Secret Key Label and Entry
-        tk.Label(root, text="Secret Key (Base32):").pack(pady=5)
-        self.secret_entry = tk.Entry(root)
-        self.secret_entry.pack(pady=5)
-
         # Add OTP Button
-        self.add_button = tk.Button(root, text="Add OTP", command=self.add_otp)
+        self.add_button = tk.Button(root, text="Add OTP", command=self.open_add_otp_window)
         self.add_button.pack(pady=10)
 
         # Delete OTP Button
         self.delete_button = tk.Button(root, text="Delete OTP", command=self.delete_otp)
         self.delete_button.pack(pady=5)
-        
+
         # Export to CSV Button
         self.export_button = tk.Button(root, text="Export keys to CSV", command=self.export_to_csv)
         self.export_button.pack(pady=5)
@@ -83,9 +77,29 @@ class TOTPApp:
         # Hash the password to derive a key
         self.fernet_key = base64.urlsafe_b64encode(sha256(self.master_password.encode()).digest())
 
-    def add_otp(self):
-        app_name = self.app_name_entry.get().strip()
-        secret = self.secret_entry.get().strip()
+    def open_add_otp_window(self):
+        """Open a new window to add an OTP entry."""
+        add_window = tk.Toplevel(self.root)
+        add_window.title("Add OTP")
+        add_window.geometry("300x200")
+
+        tk.Label(add_window, text="Name:").pack(pady=5)
+        app_name_entry = tk.Entry(add_window)
+        app_name_entry.pack(pady=5)
+
+        tk.Label(add_window, text="Secret Key (Base32):").pack(pady=5)
+        secret_entry = tk.Entry(add_window)
+        secret_entry.pack(pady=5)
+
+        add_button = tk.Button(add_window, text="Add", command=lambda: self.add_otp(app_name_entry.get(), secret_entry.get(), add_window))
+        add_button.pack(pady=10)
+
+        close_button = tk.Button(add_window, text="Close", command=add_window.destroy)
+        close_button.pack(pady=5)
+
+    def add_otp(self, app_name, secret, window):
+        app_name = app_name.strip()
+        secret = secret.strip()
 
         if app_name and secret:
             # Validate Base32 secret
@@ -106,9 +120,8 @@ class TOTPApp:
             self.save_codes()  # Save codes to file
             self.otp_listbox.insert(tk.END, f"{app_name}: {self.generate_otp(secret)}")
             
-            # Clear input fields
-            self.app_name_entry.delete(0, tk.END)
-            self.secret_entry.delete(0, tk.END)
+            # Clear input fields and close the window
+            window.destroy()
         else:
             messagebox.showwarning("Input Error", "Please fill both fields.")
 
@@ -137,7 +150,6 @@ class TOTPApp:
         # Restore the selection
         if current_selection:
             self.otp_listbox.select_set(current_selection)
-
 
     def generate_otp(self, secret):
         try:
@@ -181,6 +193,17 @@ class TOTPApp:
         for entry in self.app_list:
             otp = self.generate_otp(entry['secret'])
             self.otp_listbox.insert(tk.END, f"{entry['app_name']}: {otp}")
+            
+    def copy_to_clipboard(self):
+        selected_index = self.otp_listbox.curselection()
+        if selected_index:
+            otp_entry = self.otp_listbox.get(selected_index)
+            # Extract only the OTP part from the selected entry
+            otp_code = otp_entry.split(": ")[-1]  # Get everything after ": "
+            self.root.clipboard_clear()  # Clear the clipboard
+            self.root.clipboard_append(otp_code)  # Copy the OTP code to clipboard
+        else:
+            messagebox.showwarning("Selection Error", "Please select an OTP entry to copy.")            
 
     def update_otp(self):
         # Clear the listbox and reload the OTPs with current values
@@ -223,11 +246,12 @@ class TOTPApp:
         if file_path:
             with open(file_path, mode='w', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(["Application Name", "Base32 Secret"])
+                writer.writerow(["Name", "Secret Key"])  # Write header
                 for entry in self.app_list:
-                    writer.writerow([entry['app_name'], entry['secret']])
-            messagebox.showinfo("Export Complete", f"Data exported to {file_path}")
+                    writer.writerow([entry['app_name'], entry['secret']])  # Write each entry
+            messagebox.showinfo("Export Successful", "Keys exported to CSV successfully.")
 
+# Run the application
 if __name__ == "__main__":
     root = tk.Tk()
     app = TOTPApp(root)
