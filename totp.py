@@ -1,9 +1,11 @@
 import tkinter as tk
-from tkinter import messagebox, simpledialog
+from tkinter import messagebox, simpledialog, filedialog
 import pyotp
 import json
 import os
 import re
+import csv
+import time
 from cryptography.fernet import Fernet
 from hashlib import sha256
 import base64
@@ -12,12 +14,15 @@ class TOTPApp:
     def __init__(self, root):
         self.root = root
         self.root.title("TOTP Generator")
-        self.root.geometry("400x400")
+        self.root.geometry("400x500")
 
         self.file_path = "totp_codes.json"
         self.master_password = None
         self.app_list = []
         self.attempts = 0  # Track the number of incorrect password attempts
+
+        # TOTP interval is usually 30 seconds
+        self.totp_interval = 30
 
         # Prompt for master password first
         self.prompt_for_password()
@@ -29,6 +34,10 @@ class TOTPApp:
         # Load codes from file if they exist
         if self.load_codes():
             self.load_otp_listbox()
+
+        # Counter Label for OTP refresh countdown
+        self.counter_label = tk.Label(root, text=f"Time until code refresh: {self.totp_interval} seconds")
+        self.counter_label.pack(pady=5)
 
         # Application Name Label and Entry
         tk.Label(root, text="Application Name:").pack(pady=5)
@@ -47,8 +56,16 @@ class TOTPApp:
         # Delete OTP Button
         self.delete_button = tk.Button(root, text="Delete OTP", command=self.delete_otp)
         self.delete_button.pack(pady=5)
+        
+        # Export to CSV Button
+        self.export_button = tk.Button(root, text="Export keys to CSV", command=self.export_to_csv)
+        self.export_button.pack(pady=5)
 
-        # Start the timer for OTP rotation
+        # About Button
+        self.about_button = tk.Button(root, text="About", command=self.show_about)
+        self.about_button.pack(pady=5)
+
+        # Start the OTP timer
         self.update_otp()
 
     def prompt_for_password(self):
@@ -76,7 +93,15 @@ class TOTPApp:
                 messagebox.showerror("Error", "Invalid Base32 secret key.")
                 return
             
-            # If valid, add to the list and save
+            # If valid, create TOTP instance and validate OTP generation
+            try:
+                totp = pyotp.TOTP(secret)
+                totp.now()  # Attempt to generate OTP to check if secret is valid
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to generate OTP: {e}")
+                return  # Return early if OTP generation fails
+
+            # If the secret is valid, add to the list and save
             self.app_list.append({"app_name": app_name, "secret": secret})
             self.save_codes()  # Save codes to file
             self.otp_listbox.insert(tk.END, f"{app_name}: {self.generate_otp(secret)}")
@@ -101,10 +126,18 @@ class TOTPApp:
             messagebox.showwarning("Selection Error", "Please select an OTP entry to delete.")
 
     def update_listbox(self):
+        # Save the current selection
+        current_selection = self.otp_listbox.curselection()
+
         self.otp_listbox.delete(0, tk.END)  # Clear current listbox
         for entry in self.app_list:
             otp = self.generate_otp(entry['secret'])
             self.otp_listbox.insert(tk.END, f"{entry['app_name']}: {otp}")
+
+        # Restore the selection
+        if current_selection:
+            self.otp_listbox.select_set(current_selection)
+
 
     def generate_otp(self, secret):
         try:
@@ -135,7 +168,7 @@ class TOTPApp:
                 return True
             except Exception:
                 self.attempts += 1
-                messagebox.showerror("Error", "Failed to decrypt the data. Check your password.")
+                messagebox.showerror("Error", "Password is incorrect. Please try again.")
                 if self.attempts >= 5:
                     messagebox.showerror("Error", "Too many incorrect attempts. Exiting the application.")
                     self.root.quit()
@@ -152,9 +185,16 @@ class TOTPApp:
     def update_otp(self):
         # Clear the listbox and reload the OTPs with current values
         self.update_listbox()
-        
-        # Call this function again after 30 seconds
-        self.root.after(30000, self.update_otp)  # 30000 ms = 30 seconds
+
+        # Get current time and calculate remaining time in the 30-second TOTP cycle
+        current_time = time.time()
+        time_remaining = self.totp_interval - int(current_time) % self.totp_interval
+
+        # Update the countdown label
+        self.counter_label.config(text=f"Time until code refresh: {time_remaining} seconds")
+
+        # Call this function again after 1 second to update both OTPs and the countdown timer
+        self.root.after(1000, self.update_otp)
 
     def is_valid_base32(self, secret):
         """ Check if the provided secret is a valid Base32 string. """
@@ -172,6 +212,21 @@ class TOTPApp:
             except Exception:
                 return False
         return False
+
+    def show_about(self):
+        """ Display the About information. """
+        messagebox.showinfo("About", "This TOTP Generator app allows you to securely store and generate one-time passcodes (OTPs) using Base32 secrets.")
+
+    def export_to_csv(self):
+        """ Export the app names and Base32 secrets to a CSV file. """
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV Files", "*.csv")])
+        if file_path:
+            with open(file_path, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["Application Name", "Base32 Secret"])
+                for entry in self.app_list:
+                    writer.writerow([entry['app_name'], entry['secret']])
+            messagebox.showinfo("Export Complete", f"Data exported to {file_path}")
 
 if __name__ == "__main__":
     root = tk.Tk()
