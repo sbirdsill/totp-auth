@@ -1,2 +1,2 @@
 # totp-auth
-Python TOTP authenticator. Made with ChatGPT.
+Python TOTP authenticator with a GUI. Made with ChatGPT.
