@@ -66,13 +66,21 @@ class TOTPApp:
         """Prompt the user for a master password."""
         while self.attempts < 5:  # Allow up to 5 attempts
             self.master_password = simpledialog.askstring("Master Password", "Enter your master password:", show='*')
-            if self.master_password:
-                break
-            else:
-                messagebox.showerror("Error", "Master password is required!")
 
-        if not self.master_password:
+            if self.master_password is None:  # User clicked Cancel
+                self.root.quit()  # Quit the application
+                return
+
+            if self.master_password:  # A password was entered
+                # No need for 'break', just exit the loop
+                break
+
+            messagebox.showerror("Error", "Master password is required!")
+            self.attempts += 1  # Increment attempt count
+
+        if not self.master_password:  # If no password is set after attempts
             self.root.quit()
+            return
 
         # Hash the password to derive a key
         self.fernet_key = base64.urlsafe_b64encode(sha256(self.master_password.encode()).digest())
